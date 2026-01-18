@@ -1,5 +1,15 @@
 const { EmbedBuilder, Client } = require('discord.js');
 const db = require('pro.db');
+const fs = require('fs');
+const path = require('path');
+
+const botsFilePath = path.join(process.cwd(), 'bots.json');
+
+// المسموح لهم يستخدمون الأمر فقط
+const allowedUsers = [
+    '1142808181626634261',
+    '1438036495838609471'
+];
 
 module.exports = {
     data: {
@@ -7,12 +17,12 @@ module.exports = {
         description: 'Adds tokens to the database'
     },
     async execute(client, message, args) {
-        const Bot = db.get(`bot_${client.user.id}`) || {};
-        if (!Bot.botOwner || Bot.botOwner !== message.author.id) {
+        // صلاحية الاستخدام
+        if (!allowedUsers.includes(message.author.id)) {
             return message.reply({
                 embeds: [new EmbedBuilder()
-                    .setDescription('**❌ You do not have permission to use this command**')
-                    .setColor(0xff0000)] 
+                    .setDescription('**❌ ما عندك صلاحية تستخدم الأمر هذا**')
+                    .setColor(0xff0000)]
             });
         }
 
@@ -20,12 +30,13 @@ module.exports = {
         if (!tokens) {
             return message.reply({
                 embeds: [new EmbedBuilder()
-                    .setDescription('**❌ Please provide tokens**')
-                    .setColor(0xff0000)] 
+                    .setDescription('**❌ الرجاء إدخال التوكنات**')
+                    .setColor(0xff0000)]
             });
         }
 
-        const tokenArray = tokens.split('\n');
+        // Normalize token lines, trim and remove empty lines
+        const tokenArray = tokens.split(/\r?\n/).map(t => t.trim()).filter(Boolean);
         const validTokens = [];
         const invalidTokens = [];
         const duplicateTokens = [];
@@ -34,8 +45,8 @@ module.exports = {
 
         const quickReply = await message.reply({
             embeds: [new EmbedBuilder()
-                .setDescription('**🚀 Processing your request...**')
-                .setColor(0xffffff)]   
+                .setDescription('**🚀 جاري معالجة طلبك...**')
+                .setColor(0xffffff)]
         });
 
         for (const token of tokenArray) {
@@ -55,18 +66,39 @@ module.exports = {
         }
 
         if (validTokens.length > 0) {
+            // Update pro.db
             db.set(`tokens_${client.user.id}`, [...existingTokens, ...validTokens]);
+
+            // Also save/update bots.json in project root
+            try {
+                let botsData = {};
+                if (fs.existsSync(botsFilePath)) {
+                    const raw = fs.readFileSync(botsFilePath, 'utf8');
+                    botsData = raw ? JSON.parse(raw) : {};
+                }
+
+                // Ensure we keep unique tokens (merge file tokens, db existing tokens, and new valid tokens)
+                const fileExisting = Array.isArray(botsData[client.user.id]) ? botsData[client.user.id] : [];
+                const combined = Array.from(new Set([...fileExisting, ...existingTokens, ...validTokens]));
+
+                botsData[client.user.id] = combined;
+
+                fs.writeFileSync(botsFilePath, JSON.stringify(botsData, null, 2), 'utf8');
+            } catch (err) {
+                console.error('Failed to write bots.json:', err);
+                // لا نفشل الأمر كله بسبب فشل كتابة الملف؛ يمكن فحص اللوق لاحقاً
+            }
         }
 
-        const successMessage = validTokens.length > 0 ? `**✅ ${validTokens.length} tokens added successfully**` : '';
-        const errorMessage = invalidTokens.length > 0 ? `**❌ ${invalidTokens.length} invalid tokens were not added**` : '';
-        const duplicateMessage = duplicateTokens.length > 0 ? `**ℹ️ ${duplicateTokens.length} tokens were already in the database**` : '';
+        const successMessage = validTokens.length > 0 ? `**✅ ${validTokens.length} توكن${validTokens.length === 1 ? '' : 'ات'} تمت إضافتها بنجاح**` : '';
+        const errorMessage = invalidTokens.length > 0 ? `**❌ ${invalidTokens.length} توكن${invalidTokens.length === 1 ? '' : 'ات'} غير صالحة ولم تُضاف**` : '';
+        const duplicateMessage = duplicateTokens.length > 0 ? `**ℹ️ ${duplicateTokens.length} توكن${duplicateTokens.length === 1 ? '' : 'ات'} كانت موجودة بالفعل**` : '';
         const responseMessage = [successMessage, errorMessage, duplicateMessage].filter(Boolean).join('\n');
 
         await quickReply.edit({
             embeds: [new EmbedBuilder()
-                .setDescription(responseMessage)
-                .setColor(validTokens.length > 0 ? 0x00ff00 : 0xff0000)] 
+                .setDescription(responseMessage || '**ℹ️ لم تتم إضافة أي توكنات**')
+                .setColor(validTokens.length > 0 ? 0x00ff00 : 0xff0000)]
         });
     },
 };
