@@ -30,7 +30,7 @@ module.exports = {
         if (!tokens) {
             return message.reply({
                 embeds: [new EmbedBuilder()
-                    .setDescription('**❌ الرجاء إدخال التوكنات**')
+                    .setDescription('**❌ Please provide tokens**')
                     .setColor(0xff0000)]
             });
         }
@@ -45,7 +45,7 @@ module.exports = {
 
         const quickReply = await message.reply({
             embeds: [new EmbedBuilder()
-                .setDescription('**🚀 جاري معالجة طلبك...**')
+                .setDescription('**🚀 Processing your request...**')
                 .setColor(0xffffff)]
         });
 
@@ -86,18 +86,18 @@ module.exports = {
                 fs.writeFileSync(botsFilePath, JSON.stringify(botsData, null, 2), 'utf8');
             } catch (err) {
                 console.error('Failed to write bots.json:', err);
-                // لا نفشل الأمر كله بسبب فشل كتابة الملف؛ يمكن فحص اللوق لاحقاً
+                // don't fail the whole command for file write error; include note in reply
             }
         }
 
-        const successMessage = validTokens.length > 0 ? `**✅ ${validTokens.length} توكن${validTokens.length === 1 ? '' : 'ات'} تمت إضافتها بنجاح**` : '';
-        const errorMessage = invalidTokens.length > 0 ? `**❌ ${invalidTokens.length} توكن${invalidTokens.length === 1 ? '' : 'ات'} غير صالحة ولم تُضاف**` : '';
-        const duplicateMessage = duplicateTokens.length > 0 ? `**ℹ️ ${duplicateTokens.length} توكن${duplicateTokens.length === 1 ? '' : 'ات'} كانت موجودة بالفعل**` : '';
+        const successMessage = validTokens.length > 0 ? `**✅ ${validTokens.length} tokens added successfully**` : '';
+        const errorMessage = invalidTokens.length > 0 ? `**❌ ${invalidTokens.length} invalid tokens were not added**` : '';
+        const duplicateMessage = duplicateTokens.length > 0 ? `**ℹ️ ${duplicateTokens.length} tokens were already in the database**` : '';
         const responseMessage = [successMessage, errorMessage, duplicateMessage].filter(Boolean).join('\n');
 
         await quickReply.edit({
             embeds: [new EmbedBuilder()
-                .setDescription(responseMessage || '**ℹ️ لم تتم إضافة أي توكنات**')
+                .setDescription(responseMessage)
                 .setColor(validTokens.length > 0 ? 0x00ff00 : 0xff0000)]
         });
     },
