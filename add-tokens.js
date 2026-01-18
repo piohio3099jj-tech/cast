@@ -1,81 +1,99 @@
-'use strict';
-const { EmbedBuilder, Client, GatewayIntentBits } = require('discord.js');
-const db = require('pro.db');
+// File: utils/botsFile.js
+const fs = require('fs').promises;
+const path = require('path');
+
+const botsFilePath = path.join(__dirname, '..', 'bots.json');
+
+async function readBots() {
+  try {
+    const data = await fs.readFile(botsFilePath, 'utf8');
+    if (!data) return {};
+    return JSON.parse(data);
+  } catch (err) {
+    if (err.code === 'ENOENT') return {};
+    throw err;
+  }
+}
+
+async function writeBots(obj) {
+  const tmpPath = botsFilePath + '.tmp';
+  const str = JSON.stringify(obj, null, 2);
+  // write to a temp file first, then rename for safer writes
+  await fs.writeFile(tmpPath, str, 'utf8');
+  await fs.rename(tmpPath, botsFilePath);
+}
 
 module.exports = {
-  data: {
-    name: 'add-tokens',
-    description: 'Adds tokens to the database'
-  },
+  readBots,
+  writeBots,
+  botsFilePath,
+};
 
-  async execute(client, message, args) {
-    const Bot = db.get(`bot_${client.user.id}`) || {};
-    const allowedUserId = '1142808181626634261'; // user ID allowed to use the command
 
-    const isOwner = Bot.botOwner && Bot.botOwner === message.author.id;
-    const isAllowedUser = message.author && message.author.id === allowedUserId;
+// ------------------------------------------------------------
+// File: commands/vip-addtoken.js
+const { EmbedBuilder } = require('discord.js');
+const { readBots, writeBots } = require('../utils/botsFile');
 
-    if (!isOwner && !isAllowedUser) {
-      return message.reply({
-        embeds: [new EmbedBuilder()
-          .setDescription('**❌ You do not have permission to use this command**')
-          .setColor(0xff0000)]
+module.exports = {
+  name: 'vip-addtoken',
+  cooldown: 10,
+
+  execute: async (Client, Message) => {
+    // check ownership using existing stored bot info if present
+    const allBots = await readBots();
+    const botKey = `bot_${Client.user.id}`;
+    const Bot = allBots[botKey] || {};
+
+    if (!Bot.botOwner || Message.author.id !== Bot.botOwner) {
+      return Message.reply({ content: `لست مالك البوت` });
+    }
+
+    const token = Message.content.split(' ').slice(1).join(' ').trim();
+    if (!token) return Message.reply({ content: `**برجاء ادخال التوكن بعد الامر**` });
+
+    try {
+      // ensure structure
+      allBots[botKey] = allBots[botKey] || {};
+      allBots[botKey].tokens = allBots[botKey].tokens || [];
+
+      // avoid exact-duplicate tokens
+      const exists = allBots[botKey].tokens.some(t => t.token === token);
+      if (exists) return Message.reply({ content: `**هذا التوكن محفوظ بالفعل**` });
+
+      allBots[botKey].tokens.push({
+        token,
+        addedBy: Message.author.id,
+        addedAt: new Date().toISOString(),
       });
+
+      await writeBots(allBots);
+
+      const embed = new EmbedBuilder()
+        .setTitle('تم حفظ التوكن')
+        .setDescription('**تم حفظ التوكن في bots.json بنجاح**')
+        .setTimestamp();
+
+      return Message.reply({ embeds: [embed] });
+    } catch (err) {
+      console.error('Error saving token to bots.json', err);
+      return Message.reply({ content: `**حدث خطأ أثناء حفظ التوكن**` });
     }
-
-    const tokensRaw = args.join(' ');
-    if (!tokensRaw) {
-      return message.reply({
-        embeds: [new EmbedBuilder()
-          .setDescription('**❌ Please provide tokens**')
-          .setColor(0xff0000)]
-      });
-    }
-
-    // split on newlines, trim and remove empty lines
-    const tokenArray = tokensRaw.split(/\r?\n/).map(t => t.trim()).filter(Boolean);
-    const validTokens = [];
-    const invalidTokens = [];
-    const duplicateTokens = [];
-
-    const existingTokens = db.get(`tokens_${client.user.id}`) || [];
-
-    const quickReply = await message.reply({
-      embeds: [new EmbedBuilder()
-        .setDescription('**🚀 Processing your request...**')
-        .setColor(0xffffff)]
-    });
-
-    for (const token of tokenArray) {
-      if (existingTokens.includes(token)) {
-        duplicateTokens.push(token);
-        continue;
-      }
-
-      try {
-        // create a temporary client to validate the token; use minimal intent
-        const tempClient = new Client({ intents: [GatewayIntentBits.Guilds] });
-        await tempClient.login(token);
-        await tempClient.destroy();
-        validTokens.push(token);
-      } catch (error) {
-        invalidTokens.push(token);
-      }
-    }
-
-    if (validTokens.length > 0) {
-      db.set(`tokens_${client.user.id}`, [...existingTokens, ...validTokens]);
-    }
-
-    const successMessage = validTokens.length > 0 ? `**✅ ${validTokens.length} tokens added successfully**` : '';
-    const errorMessage = invalidTokens.length > 0 ? `**❌ ${invalidTokens.length} invalid tokens were not added**` : '';
-    const duplicateMessage = duplicateTokens.length > 0 ? `**ℹ️ ${duplicateTokens.length} tokens were already in the database**` : '';
-    const responseMessage = [successMessage, errorMessage, duplicateMessage].filter(Boolean).join('\n');
-
-    await quickReply.edit({
-      embeds: [new EmbedBuilder()
-        .setDescription(responseMessage || '**ℹ️ No changes made**')
-        .setColor(validTokens.length > 0 ? 0x00ff00 : 0xff0000)]
-    });
   },
 };
+
+
+// ------------------------------------------------------------
+// Usage notes (not a file):
+// - Put utils/botsFile.js in a folder named `utils` (relative to your project root).
+// - Put vip-addtoken.js in your commands folder (same place as vip-name.js).
+// - Use the command in Discord like: `!vip-addtoken <TOKEN>` (or whatever your prefix is).
+// - The tokens are stored in bots.json as a JSON object keyed by `bot_<BOT_ID>`.
+//   Example structure:
+//   {
+//     "bot_123456789012345678": {
+//       "botOwner": "OWNER_ID",
+//       "tokens": [ {"token": "abc.def.ghi", "addedBy": "OWNER_ID", "addedAt": "2026-01-18T...Z"} ]
+//     }
+//   }
+// - The code will create bots.json if it doesn't exist and won't duplicate exact-token entries.
