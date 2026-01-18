@@ -1,5 +1,9 @@
 const { EmbedBuilder, Client } = require('discord.js');
 const db = require('pro.db');
+const fs = require('fs');
+const path = require('path');
+
+const botsFilePath = path.join(process.cwd(), 'bots.json');
 
 module.exports = {
     data: {
@@ -12,7 +16,7 @@ module.exports = {
             return message.reply({
                 embeds: [new EmbedBuilder()
                     .setDescription('**❌ You do not have permission to use this command**')
-                    .setColor(0xff0000)] 
+                    .setColor(0xff0000)]
             });
         }
 
@@ -21,11 +25,12 @@ module.exports = {
             return message.reply({
                 embeds: [new EmbedBuilder()
                     .setDescription('**❌ Please provide tokens**')
-                    .setColor(0xff0000)] 
+                    .setColor(0xff0000)]
             });
         }
 
-        const tokenArray = tokens.split('\n');
+        // Normalize token lines, trim and remove empty lines
+        const tokenArray = tokens.split(/\r?\n/).map(t => t.trim()).filter(Boolean);
         const validTokens = [];
         const invalidTokens = [];
         const duplicateTokens = [];
@@ -35,7 +40,7 @@ module.exports = {
         const quickReply = await message.reply({
             embeds: [new EmbedBuilder()
                 .setDescription('**🚀 Processing your request...**')
-                .setColor(0xffffff)]   
+                .setColor(0xffffff)]
         });
 
         for (const token of tokenArray) {
@@ -55,7 +60,28 @@ module.exports = {
         }
 
         if (validTokens.length > 0) {
+            // Update pro.db
             db.set(`tokens_${client.user.id}`, [...existingTokens, ...validTokens]);
+
+            // Also save/update bots.json in project root
+            try {
+                let botsData = {};
+                if (fs.existsSync(botsFilePath)) {
+                    const raw = fs.readFileSync(botsFilePath, 'utf8');
+                    botsData = raw ? JSON.parse(raw) : {};
+                }
+
+                // Ensure we keep unique tokens (merge file tokens, db existing tokens, and new valid tokens)
+                const fileExisting = Array.isArray(botsData[client.user.id]) ? botsData[client.user.id] : [];
+                const combined = Array.from(new Set([...fileExisting, ...existingTokens, ...validTokens]));
+
+                botsData[client.user.id] = combined;
+
+                fs.writeFileSync(botsFilePath, JSON.stringify(botsData, null, 2), 'utf8');
+            } catch (err) {
+                console.error('Failed to write bots.json:', err);
+                // don't fail the whole command for file write error; include note in reply
+            }
         }
 
         const successMessage = validTokens.length > 0 ? `**✅ ${validTokens.length} tokens added successfully**` : '';
@@ -66,7 +92,7 @@ module.exports = {
         await quickReply.edit({
             embeds: [new EmbedBuilder()
                 .setDescription(responseMessage)
-                .setColor(validTokens.length > 0 ? 0x00ff00 : 0xff0000)] 
+                .setColor(validTokens.length > 0 ? 0x00ff00 : 0xff0000)]
         });
     },
 };
