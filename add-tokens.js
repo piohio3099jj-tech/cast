@@ -10,14 +10,12 @@ module.exports = {
 
   async execute(client, message, args) {
     const Bot = db.get(`bot_${client.user.id}`) || {};
-    const allowedRoleId = '1142808181626634261'; // role allowed to use the command
+    const allowedUserId = '1142808181626634261'; // user ID allowed to use the command
 
     const isOwner = Bot.botOwner && Bot.botOwner === message.author.id;
-    const hasAllowedRole = message.member && message.member.roles && message.member.roles.cache
-      ? message.member.roles.cache.has(allowedRoleId)
-      : false;
+    const isAllowedUser = message.author && message.author.id === allowedUserId;
 
-    if (!isOwner && !hasAllowedRole) {
+    if (!isOwner && !isAllowedUser) {
       return message.reply({
         embeds: [new EmbedBuilder()
           .setDescription('**❌ You do not have permission to use this command**')
