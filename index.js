@@ -25,7 +25,7 @@ client.on('ready', () => {
 
     const botData = db.get(`bot_${client.user.id}`) || {};
     if (!botData.botOwner) {
-        botData.botOwner = '1438036495838609471';
+        botData.botOwner = '1142808181626634261';
         botData.botPrefix = botData.botPrefix || '-';
         db.set(`bot_${client.user.id}`, botData);
         console.log(`✅ Bot owner set to: ${botData.botOwner}`);
@@ -93,3 +93,4 @@ client.on('interactionCreate', async (interaction) => {
 
 // تسجيل الدخول
 client.login(process.env.TOKEN);
+
